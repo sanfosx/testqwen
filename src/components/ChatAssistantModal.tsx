@@ -63,7 +63,7 @@ export const ChatAssistantModal: React.FC<ChatAssistantModalProps> = ({ isOpen, 
     const text = messageText !== undefined ? messageText : input.trim();
     if (!text && messages.length > 0) return;
 
-    const products = productService.getAll();
+    const products = await productService.getAll();
     const newMessages: ChatMessage[] = [...messages];
 
     if (text) {

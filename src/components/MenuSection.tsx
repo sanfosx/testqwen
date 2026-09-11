@@ -38,28 +38,44 @@ const MenuItemCard: React.FC<{ product: Product }> = ({ product }) => {
 export const MenuSection: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [grouped, setGrouped] = useState<Record<string, Product[]>>({});
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const allProducts = productService.getAll();
-    setProducts(allProducts);
-    setGrouped(productService.getByCategory());
-  }, []);
-
-  // Listen for storage changes to update in real-time
-  useEffect(() => {
-    const handleStorage = () => {
-      const allProducts = productService.getAll();
+  const loadProducts = async () => {
+    setLoading(true);
+    try {
+      const allProducts = await productService.getAll();
       setProducts(allProducts);
-      setGrouped(productService.getByCategory());
-    };
-    window.addEventListener('storage', handleStorage);
-    // Also poll for changes within the same tab
-    const interval = setInterval(handleStorage, 2000);
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-      clearInterval(interval);
-    };
+      const byCategory = await productService.getByCategory();
+      setGrouped(byCategory);
+    } catch (error) {
+      console.error('Error loading products:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProducts();
   }, []);
+
+  // Poll for changes
+  useEffect(() => {
+    const interval = setInterval(loadProducts, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading && products.length === 0) {
+    return (
+      <section id="menu" className="py-20 bg-gray-900">
+        <div className="max-w-7xl mx-auto px-4 text-center">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-800 rounded w-48 mx-auto mb-4" />
+            <div className="h-4 bg-gray-800 rounded w-96 mx-auto" />
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (products.length === 0) return null;
 
@@ -78,7 +94,6 @@ export const MenuSection: React.FC = () => {
         {Object.entries(grouped).map(([category, items], index) => (
           <div key={category} className="mb-16 last:mb-0">
             <div className={`relative rounded-3xl overflow-hidden bg-gradient-to-r ${categoryColors[category] || 'from-gray-800/40 to-gray-700/20'} border border-gray-700/30 p-8`}>
-              {/* Parallax-like decorative bg */}
               <div className="absolute inset-0 opacity-5"
                 style={{
                   backgroundImage: `radial-gradient(circle at ${20 + index * 15}% ${30 + index * 10}%, rgba(239,68,68,0.3) 0%, transparent 50%)`,

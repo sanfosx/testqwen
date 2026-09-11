@@ -1,5 +1,6 @@
 import { Reservation, Table } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { insforge, isInsforgeConfigured } from '../lib/insforge';
 
 const RESERVATIONS_KEY = 'pizzeria_reservations';
 const TABLES_KEY = 'pizzeria_tables';
@@ -12,43 +13,18 @@ const defaultTables: Table[] = [
   { id: uuidv4(), name: 'Mesa 5', capacity: 8 },
 ];
 
-const defaultReservations: Reservation[] = [];
-
-export const reservationService = {
+const localStorageFallback = {
   getReservations(): Reservation[] {
     const data = localStorage.getItem(RESERVATIONS_KEY);
     if (!data) {
-      localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(defaultReservations));
-      return defaultReservations;
+      localStorage.setItem(RESERVATIONS_KEY, JSON.stringify([]));
+      return [];
     }
     return JSON.parse(data);
   },
-
-  createReservation(reservation: Omit<Reservation, 'id' | 'createdAt'>): Reservation {
-    const reservations = this.getReservations();
-    const newRes: Reservation = { ...reservation, id: uuidv4(), createdAt: new Date().toISOString() };
-    reservations.push(newRes);
+  saveReservations(reservations: Reservation[]): void {
     localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(reservations));
-    return newRes;
   },
-
-  updateReservation(id: string, updates: Partial<Reservation>): Reservation | undefined {
-    const reservations = this.getReservations();
-    const index = reservations.findIndex(r => r.id === id);
-    if (index === -1) return undefined;
-    reservations[index] = { ...reservations[index], ...updates };
-    localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(reservations));
-    return reservations[index];
-  },
-
-  deleteReservation(id: string): boolean {
-    const reservations = this.getReservations();
-    const filtered = reservations.filter(r => r.id !== id);
-    if (filtered.length === reservations.length) return false;
-    localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(filtered));
-    return true;
-  },
-
   getTables(): Table[] {
     const data = localStorage.getItem(TABLES_KEY);
     if (!data) {
@@ -57,39 +33,216 @@ export const reservationService = {
     }
     return JSON.parse(data);
   },
-
   saveTables(tables: Table[]): void {
     localStorage.setItem(TABLES_KEY, JSON.stringify(tables));
+  }
+};
+
+export const reservationService = {
+  async getReservations(): Promise<Reservation[]> {
+    if (!isInsforgeConfigured()) {
+      return localStorageFallback.getReservations();
+    }
+    try {
+      const { data, error } = await insforge.database
+        .from('reservations')
+        .select()
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as Reservation[];
+    } catch (error) {
+      console.error('Error fetching reservations:', error);
+      return localStorageFallback.getReservations();
+    }
   },
 
-  createTable(table: Omit<Table, 'id'>): Table {
-    const tables = this.getTables();
-    const newTable: Table = { ...table, id: uuidv4() };
-    tables.push(newTable);
-    this.saveTables(tables);
-    return newTable;
+  async createReservation(reservation: Omit<Reservation, 'id' | 'createdAt'>): Promise<Reservation> {
+    if (!isInsforgeConfigured()) {
+      const reservations = localStorageFallback.getReservations();
+      const newRes: Reservation = { ...reservation, id: uuidv4(), createdAt: new Date().toISOString() };
+      reservations.push(newRes);
+      localStorageFallback.saveReservations(reservations);
+      return newRes;
+    }
+    try {
+      const resData = { ...reservation, id: uuidv4(), created_at: new Date().toISOString() };
+      const { data, error } = await insforge.database
+        .from('reservations')
+        .insert(resData)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Reservation;
+    } catch (error) {
+      console.error('Error creating reservation:', error);
+      const reservations = localStorageFallback.getReservations();
+      const newRes: Reservation = { ...reservation, id: uuidv4(), createdAt: new Date().toISOString() };
+      reservations.push(newRes);
+      localStorageFallback.saveReservations(reservations);
+      return newRes;
+    }
   },
 
-  updateTable(id: string, updates: Partial<Table>): Table | undefined {
-    const tables = this.getTables();
-    const index = tables.findIndex(t => t.id === id);
-    if (index === -1) return undefined;
-    tables[index] = { ...tables[index], ...updates };
-    this.saveTables(tables);
-    return tables[index];
+  async updateReservation(id: string, updates: Partial<Reservation>): Promise<Reservation | undefined> {
+    if (!isInsforgeConfigured()) {
+      const reservations = localStorageFallback.getReservations();
+      const index = reservations.findIndex(r => r.id === id);
+      if (index === -1) return undefined;
+      reservations[index] = { ...reservations[index], ...updates };
+      localStorageFallback.saveReservations(reservations);
+      return reservations[index];
+    }
+    try {
+      const { data, error } = await insforge.database
+        .from('reservations')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Reservation;
+    } catch (error) {
+      console.error('Error updating reservation:', error);
+      const reservations = localStorageFallback.getReservations();
+      const index = reservations.findIndex(r => r.id === id);
+      if (index === -1) return undefined;
+      reservations[index] = { ...reservations[index], ...updates };
+      localStorageFallback.saveReservations(reservations);
+      return reservations[index];
+    }
   },
 
-  deleteTable(id: string): boolean {
-    const tables = this.getTables();
-    const filtered = tables.filter(t => t.id !== id);
-    if (filtered.length === tables.length) return false;
-    this.saveTables(filtered);
-    return true;
+  async deleteReservation(id: string): Promise<boolean> {
+    if (!isInsforgeConfigured()) {
+      const reservations = localStorageFallback.getReservations();
+      const filtered = reservations.filter(r => r.id !== id);
+      if (filtered.length === reservations.length) return false;
+      localStorageFallback.saveReservations(filtered);
+      return true;
+    }
+    try {
+      const { error } = await insforge.database
+        .from('reservations')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error deleting reservation:', error);
+      const reservations = localStorageFallback.getReservations();
+      const filtered = reservations.filter(r => r.id !== id);
+      if (filtered.length === reservations.length) return false;
+      localStorageFallback.saveReservations(filtered);
+      return true;
+    }
+  },
+
+  async getTables(): Promise<Table[]> {
+    if (!isInsforgeConfigured()) {
+      return localStorageFallback.getTables();
+    }
+    try {
+      const { data, error } = await insforge.database
+        .from('tables')
+        .select();
+      if (error) throw error;
+      return (data || []) as Table[];
+    } catch (error) {
+      console.error('Error fetching tables:', error);
+      return localStorageFallback.getTables();
+    }
+  },
+
+  async saveTables(tables: Table[]): Promise<void> {
+    localStorageFallback.saveTables(tables);
+    
+    if (isInsforgeConfigured()) {
+      try {
+        await insforge.database.from('tables').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        for (const table of tables) {
+          await insforge.database.from('tables').insert(table);
+        }
+      } catch (error) {
+        console.error('Error saving tables to InsForge:', error);
+      }
+    }
+  },
+
+  async createTable(table: Omit<Table, 'id'>): Promise<Table> {
+    if (!isInsforgeConfigured()) {
+      const tables = localStorageFallback.getTables();
+      const newTable: Table = { ...table, id: uuidv4() };
+      tables.push(newTable);
+      localStorageFallback.saveTables(tables);
+      return newTable;
+    }
+    try {
+      const tableData = { ...table, id: uuidv4(), created_at: new Date().toISOString() };
+      const { data, error } = await insforge.database
+        .from('tables')
+        .insert(tableData)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Table;
+    } catch (error) {
+      console.error('Error creating table:', error);
+      const tables = localStorageFallback.getTables();
+      const newTable: Table = { ...table, id: uuidv4() };
+      tables.push(newTable);
+      localStorageFallback.saveTables(tables);
+      return newTable;
+    }
+  },
+
+  async updateTable(id: string, updates: Partial<Table>): Promise<Table | undefined> {
+    if (!isInsforgeConfigured()) {
+      const tables = localStorageFallback.getTables();
+      const index = tables.findIndex(t => t.id === id);
+      if (index === -1) return undefined;
+      tables[index] = { ...tables[index], ...updates };
+      localStorageFallback.saveTables(tables);
+      return tables[index];
+    }
+    try {
+      const { data, error } = await insforge.database
+        .from('tables')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Table;
+    } catch (error) {
+      console.error('Error updating table:', error);
+      return undefined;
+    }
+  },
+
+  async deleteTable(id: string): Promise<boolean> {
+    if (!isInsforgeConfigured()) {
+      const tables = localStorageFallback.getTables();
+      const filtered = tables.filter(t => t.id !== id);
+      if (filtered.length === tables.length) return false;
+      localStorageFallback.saveTables(filtered);
+      return true;
+    }
+    try {
+      const { error } = await insforge.database
+        .from('tables')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error deleting table:', error);
+      return false;
+    }
   },
 
   getAvailableSlots(date: string, guests: number, duration: number, openTime: string, closeTime: string): { time: string; availableTables: Table[] }[] {
-    const tables = this.getTables().filter(t => t.capacity >= guests);
-    const reservations = this.getReservations().filter(r => r.date === date && r.status !== 'cancelled');
+    const tables = localStorageFallback.getTables().filter(t => t.capacity >= guests);
+    const reservations = localStorageFallback.getReservations().filter(r => r.date === date && r.status !== 'cancelled');
 
     const [openH, openM] = openTime.split(':').map(Number);
     const [closeH, closeM] = closeTime.split(':').map(Number);

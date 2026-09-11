@@ -25,7 +25,6 @@ export const AdminPanel: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-950 pt-16">
-      {/* Mobile menu button */}
       <button
         className="lg:hidden fixed bottom-4 right-4 z-40 w-14 h-14 bg-red-500 text-white rounded-full shadow-lg flex items-center justify-center"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -34,7 +33,6 @@ export const AdminPanel: React.FC = () => {
       </button>
 
       <div className="flex">
-        {/* Sidebar */}
         <aside className={`fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-64 bg-gray-900 border-r border-gray-800 z-30 transform transition-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
           <div className="p-4">
             <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 px-3">Panel Admin</h2>
@@ -57,7 +55,6 @@ export const AdminPanel: React.FC = () => {
           </div>
         </aside>
 
-        {/* Main Content */}
         <main className="flex-1 p-4 md:p-8 min-h-[calc(100vh-4rem)]">
           {activeView === 'products' && <ProductsPanel />}
           {activeView === 'orders' && <OrdersPanel />}
@@ -78,9 +75,18 @@ const ProductsPanel: React.FC = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [form, setForm] = useState({ name: '', description: '', price: '', category: '' });
+  const [loading, setLoading] = useState(true);
 
-  const loadProducts = useCallback(() => {
-    setProducts(productService.getAll());
+  const loadProducts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const allProducts = await productService.getAll();
+      setProducts(allProducts);
+    } catch (error) {
+      console.error('Error loading products:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
@@ -100,22 +106,30 @@ const ProductsPanel: React.FC = () => {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name || !form.price || !form.category) return;
     if (editingProduct) {
-      productService.update(editingProduct.id, { name: form.name, description: form.description, price: parseFloat(form.price), category: form.category });
+      await productService.update(editingProduct.id, { name: form.name, description: form.description, price: parseFloat(form.price), category: form.category });
     } else {
-      productService.create({ name: form.name, description: form.description, price: parseFloat(form.price), category: form.category });
+      await productService.create({ name: form.name, description: form.description, price: parseFloat(form.price), category: form.category });
     }
     setModalOpen(false);
     loadProducts();
   };
 
-  const handleDelete = (id: string) => {
-    productService.delete(id);
+  const handleDelete = async (id: string) => {
+    await productService.delete(id);
     setDeleteConfirm(null);
     loadProducts();
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin w-8 h-8 border-4 border-red-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -129,7 +143,6 @@ const ProductsPanel: React.FC = () => {
         </button>
       </div>
 
-      {/* Desktop Table */}
       <div className="hidden md:block bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-800/50">
@@ -158,7 +171,6 @@ const ProductsPanel: React.FC = () => {
         </table>
       </div>
 
-      {/* Mobile Cards */}
       <div className="md:hidden space-y-3">
         {paginated.map(product => (
           <div key={product.id} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
@@ -227,14 +239,22 @@ const OrdersPanel: React.FC = () => {
   const [page, setPage] = useState(1);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [timers, setTimers] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
 
-  const loadOrders = useCallback(() => {
-    setOrders(orderService.getAll());
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const allOrders = await orderService.getAll();
+      setOrders(allOrders);
+    } catch (error) {
+      console.error('Error loading orders:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
-  // Real-time timer
   useEffect(() => {
     const interval = setInterval(() => {
       const newTimers: Record<string, string> = {};
@@ -254,15 +274,23 @@ const OrdersPanel: React.FC = () => {
   const paginated = orders.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
   const totalPages = Math.ceil(orders.length / ITEMS_PER_PAGE);
 
-  const handleStatusChange = (orderId: string, newStatus: Order['status']) => {
-    orderService.updateStatus(orderId, newStatus);
+  const handleStatusChange = async (orderId: string, newStatus: Order['status']) => {
+    await orderService.updateStatus(orderId, newStatus);
     loadOrders();
   };
 
-  const handleDelete = (id: string) => {
-    orderService.delete(id);
+  const handleDelete = async (id: string) => {
+    await orderService.delete(id);
     loadOrders();
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin w-8 h-8 border-4 border-red-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -274,6 +302,12 @@ const OrdersPanel: React.FC = () => {
       </div>
 
       <div className="space-y-3">
+        {paginated.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>No hay pedidos todavía</p>
+          </div>
+        )}
         {paginated.map(order => {
           const isFinal = ['completed', 'cancelled'].includes(order.status);
           const validTransitions = orderService.getValidTransitions(order.status);
@@ -375,9 +409,18 @@ const CustomersPanel: React.FC = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [form, setForm] = useState({ name: '', phone: '', address: '', email: '' });
+  const [loading, setLoading] = useState(true);
 
-  const loadCustomers = useCallback(() => {
-    setCustomers(customerService.getAll());
+  const loadCustomers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const allCustomers = await customerService.getAll();
+      setCustomers(allCustomers);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadCustomers(); }, [loadCustomers]);
@@ -397,16 +440,30 @@ const CustomersPanel: React.FC = () => {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name || !form.phone) return;
     if (editingCustomer) {
-      customerService.update(editingCustomer.id, form);
+      await customerService.update(editingCustomer.id, form);
     } else {
-      customerService.create(form);
+      await customerService.create(form);
     }
     setModalOpen(false);
     loadCustomers();
   };
+
+  const handleDelete = async (id: string) => {
+    await customerService.delete(id);
+    setDeleteConfirm(null);
+    loadCustomers();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin w-8 h-8 border-4 border-red-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -420,7 +477,6 @@ const CustomersPanel: React.FC = () => {
         </button>
       </div>
 
-      {/* Desktop Table */}
       <div className="hidden md:block bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-800/50">
@@ -449,7 +505,6 @@ const CustomersPanel: React.FC = () => {
         </table>
       </div>
 
-      {/* Mobile Cards */}
       <div className="md:hidden space-y-3">
         {paginated.map(customer => (
           <div key={customer.id} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
@@ -494,7 +549,7 @@ const CustomersPanel: React.FC = () => {
       <ConfirmModal
         isOpen={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
-        onConfirm={() => deleteConfirm && customerService.delete(deleteConfirm) && loadCustomers()}
+        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         title="Eliminar Cliente"
         message="¿Estás seguro de que querés eliminar este cliente?"
         confirmText="Eliminar"
@@ -648,11 +703,24 @@ const ReservationsPanel: React.FC = () => {
   const [availableSlots, setAvailableSlots] = useState<{ time: string; availableTables: Table[] }[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newTableForm, setNewTableForm] = useState({ name: '', capacity: 4 });
+  const [loading, setLoading] = useState(true);
 
-  const loadData = useCallback(() => {
-    setReservations(reservationService.getReservations());
-    setTables(reservationService.getTables());
-    setCustomers(customerService.getAll());
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [allReservations, allTables, allCustomers] = await Promise.all([
+        reservationService.getReservations(),
+        reservationService.getTables(),
+        customerService.getAll(),
+      ]);
+      setReservations(allReservations);
+      setTables(allTables);
+      setCustomers(allCustomers);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -680,14 +748,11 @@ const ReservationsPanel: React.FC = () => {
     const todaySchedule = scheduleService.getTodaySchedule();
     if (!todaySchedule || !todaySchedule.isOpen || todaySchedule.slots.length === 0) return;
 
-    const firstSlot = todaySchedule.slots[0];
     const allSlots: { time: string; availableTables: Table[] }[] = [];
-
     todaySchedule.slots.forEach(slot => {
       const slots = reservationService.getAvailableSlots(form.date, form.guests, schedule.defaultReservationDuration, slot.open, slot.close);
       allSlots.push(...slots);
     });
-
     setAvailableSlots(allSlots);
   };
 
@@ -706,10 +771,10 @@ const ReservationsPanel: React.FC = () => {
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.customerName || !form.time || !form.tableId || !form.date) return;
     const table = tables.find(t => t.id === form.tableId);
-    reservationService.createReservation({
+    await reservationService.createReservation({
       customerId: form.customerId || '',
       customerName: form.customerName,
       customerPhone: form.customerPhone,
@@ -724,18 +789,37 @@ const ReservationsPanel: React.FC = () => {
     loadData();
   };
 
-  const handleAddTable = () => {
+  const handleAddTable = async () => {
     if (!newTableForm.name) return;
-    reservationService.createTable(newTableForm);
+    await reservationService.createTable(newTableForm);
     setNewTableForm({ name: '', capacity: 4 });
     setTableModalOpen(false);
     loadData();
   };
 
-  const handleDeleteTable = (id: string) => {
-    reservationService.deleteTable(id);
+  const handleDeleteTable = async (id: string) => {
+    await reservationService.deleteTable(id);
     loadData();
   };
+
+  const handleCancelReservation = async (id: string) => {
+    await reservationService.updateReservation(id, { status: 'cancelled' });
+    loadData();
+  };
+
+  const handleDeleteReservation = async (id: string) => {
+    await reservationService.deleteReservation(id);
+    setDeleteConfirm(null);
+    loadData();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin w-8 h-8 border-4 border-red-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -754,7 +838,6 @@ const ReservationsPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Reservations list */}
       <div className="space-y-3">
         {paginated.length === 0 && (
           <div className="text-center py-12 text-gray-500">
@@ -785,7 +868,7 @@ const ReservationsPanel: React.FC = () => {
             <div className="flex gap-2">
               {res.status === 'confirmed' && (
                 <button
-                  onClick={() => { reservationService.updateReservation(res.id, { status: 'cancelled' }); loadData(); }}
+                  onClick={() => handleCancelReservation(res.id)}
                   className="text-xs bg-red-500/10 text-red-400 px-3 py-1.5 rounded-lg hover:bg-red-500/20"
                 >
                   Cancelar
@@ -801,10 +884,8 @@ const ReservationsPanel: React.FC = () => {
 
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
-      {/* Create Reservation Modal */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Nueva Reserva" size="lg">
         <div className="space-y-4">
-          {/* Customer selection */}
           <div>
             <label className="text-sm text-gray-400 mb-1 block">Cliente existente</label>
             <select
@@ -843,7 +924,6 @@ const ReservationsPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* Available slots matrix */}
           {availableSlots.length > 0 && (
             <div>
               <label className="text-sm text-gray-400 mb-2 block">Turnos disponibles</label>
@@ -872,7 +952,6 @@ const ReservationsPanel: React.FC = () => {
             <p className="text-yellow-400 text-sm">No hay turnos disponibles para la fecha y cantidad de comensales seleccionados.</p>
           )}
 
-          {/* Table selection */}
           {form.time && (
             <div>
               <label className="text-sm text-gray-400 mb-1 block">Mesa</label>
@@ -895,7 +974,6 @@ const ReservationsPanel: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Tables Management Modal */}
       <Modal isOpen={tableModalOpen} onClose={() => setTableModalOpen(false)} title="Gestión de Mesas">
         <div className="space-y-4">
           <div className="space-y-2">
@@ -939,7 +1017,7 @@ const ReservationsPanel: React.FC = () => {
       <ConfirmModal
         isOpen={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
-        onConfirm={() => { if (deleteConfirm) { reservationService.deleteReservation(deleteConfirm); loadData(); } }}
+        onConfirm={() => deleteConfirm && handleDeleteReservation(deleteConfirm)}
         title="Eliminar Reserva"
         message="¿Estás seguro de que querés eliminar esta reserva?"
         confirmText="Eliminar"

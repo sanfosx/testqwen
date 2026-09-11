@@ -1,5 +1,6 @@
 import { Order } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { insforge, isInsforgeConfigured } from '../lib/insforge';
 
 const STORAGE_KEY = 'pizzeria_orders';
 
@@ -36,7 +37,7 @@ const defaultOrders: Order[] = [
   },
 ];
 
-export const orderService = {
+const localStorageFallback = {
   getAll(): Order[] {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) {
@@ -45,11 +46,9 @@ export const orderService = {
     }
     return JSON.parse(data);
   },
-
   getById(id: string): Order | undefined {
     return this.getAll().find(o => o.id === id);
   },
-
   create(order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>): Order {
     const orders = this.getAll();
     const now = new Date().toISOString();
@@ -58,7 +57,6 @@ export const orderService = {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
     return newOrder;
   },
-
   update(id: string, updates: Partial<Order>): Order | undefined {
     const orders = this.getAll();
     const index = orders.findIndex(o => o.id === id);
@@ -70,17 +68,118 @@ export const orderService = {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
     return orders[index];
   },
-
-  updateStatus(id: string, status: Order['status']): Order | undefined {
-    return this.update(id, { status });
-  },
-
   delete(id: string): boolean {
     const orders = this.getAll();
     const filtered = orders.filter(o => o.id !== id);
     if (filtered.length === orders.length) return false;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
     return true;
+  }
+};
+
+export const orderService = {
+  async getAll(): Promise<Order[]> {
+    if (!isInsforgeConfigured()) {
+      return localStorageFallback.getAll();
+    }
+    try {
+      const { data, error } = await insforge.database
+        .from('orders')
+        .select()
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as Order[];
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+      return localStorageFallback.getAll();
+    }
+  },
+
+  async getById(id: string): Promise<Order | undefined> {
+    if (!isInsforgeConfigured()) {
+      return localStorageFallback.getById(id);
+    }
+    try {
+      const { data, error } = await insforge.database
+        .from('orders')
+        .select()
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return data as Order;
+    } catch (error) {
+      console.error('Error fetching order:', error);
+      return localStorageFallback.getById(id);
+    }
+  },
+
+  async create(order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>): Promise<Order> {
+    if (!isInsforgeConfigured()) {
+      return localStorageFallback.create(order);
+    }
+    try {
+      const now = new Date().toISOString();
+      const orderData = {
+        ...order,
+        id: uuidv4(),
+        created_at: now,
+        updated_at: now,
+      };
+      const { data, error } = await insforge.database
+        .from('orders')
+        .insert(orderData)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Order;
+    } catch (error) {
+      console.error('Error creating order:', error);
+      return localStorageFallback.create(order);
+    }
+  },
+
+  async update(id: string, updates: Partial<Order>): Promise<Order | undefined> {
+    if (!isInsforgeConfigured()) {
+      return localStorageFallback.update(id, updates);
+    }
+    try {
+      const updateData = { ...updates, updated_at: new Date().toISOString() };
+      if (updates.status === 'completed' || updates.status === 'cancelled') {
+        (updateData as any).completed_at = new Date().toISOString();
+      }
+      const { data, error } = await insforge.database
+        .from('orders')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Order;
+    } catch (error) {
+      console.error('Error updating order:', error);
+      return localStorageFallback.update(id, updates);
+    }
+  },
+
+  async updateStatus(id: string, status: Order['status']): Promise<Order | undefined> {
+    return this.update(id, { status });
+  },
+
+  async delete(id: string): Promise<boolean> {
+    if (!isInsforgeConfigured()) {
+      return localStorageFallback.delete(id);
+    }
+    try {
+      const { error } = await insforge.database
+        .from('orders')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error deleting order:', error);
+      return localStorageFallback.delete(id);
+    }
   },
 
   getValidTransitions(currentStatus: Order['status']): Order['status'][] {

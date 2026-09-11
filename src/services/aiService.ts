@@ -97,12 +97,10 @@ INSTRUCCIONES:
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.0-flash',
-        contents: [{
-          parts: [
-            { text: 'Transcribe the following audio to text. Return only the transcribed text, nothing else.' },
-            { inlineData: { mimeType: audioBlob.type || 'audio/webm', data: base64 } }
-          ]
-        }]
+        contents: [
+          { text: 'Transcribe the following audio to text. Return only the transcribed text, nothing else.' },
+          { fileData: { mimeType: audioBlob.type || 'audio/webm', fileUri: `data:${audioBlob.type || 'audio/webm'};base64,${base64}` } }
+        ]
       });
 
       return response.text || '';

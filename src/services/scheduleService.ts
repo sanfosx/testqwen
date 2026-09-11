@@ -1,4 +1,5 @@
 import { Schedule, DaySchedule } from '../types';
+import { insforge, isInsforgeConfigured } from '../lib/insforge';
 
 const STORAGE_KEY = 'pizzeria_schedule';
 
@@ -15,7 +16,7 @@ const defaultSchedule: Schedule = {
   defaultReservationDuration: 90,
 };
 
-export const scheduleService = {
+const localStorageFallback = {
   get(): Schedule {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) {
@@ -24,9 +25,74 @@ export const scheduleService = {
     }
     return JSON.parse(data);
   },
-
   save(schedule: Schedule): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(schedule));
+  }
+};
+
+export const scheduleService = {
+  get(): Schedule {
+    // Schedule se mantiene síncrono con localStorage por simplicidad
+    // En InsForge se puede sincronizar manualmente
+    return localStorageFallback.get();
+  },
+
+  save(schedule: Schedule): void {
+    localStorageFallback.save(schedule);
+    
+    // Si InsForge está configurado, sincronizar en background
+    if (isInsforgeConfigured()) {
+      this.syncToInsforge(schedule).catch(err => {
+        console.error('Error syncing schedule to InsForge:', err);
+      });
+    }
+  },
+
+  async syncToInsforge(schedule: Schedule): Promise<void> {
+    if (!isInsforgeConfigured()) return;
+    
+    try {
+      // Eliminar horarios existentes y crear nuevos
+      await insforge.database.from('schedule').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      // Insertar cada día como una fila
+      for (const day of schedule.days) {
+        await insforge.database.from('schedule').insert({
+          day: day.day,
+          is_open: day.isOpen,
+          slots: day.slots,
+          default_reservation_duration: schedule.defaultReservationDuration,
+        });
+      }
+    } catch (error) {
+      console.error('Error syncing schedule:', error);
+    }
+  },
+
+  async loadFromInsforge(): Promise<Schedule | null> {
+    if (!isInsforgeConfigured()) return null;
+    
+    try {
+      const { data, error } = await insforge.database
+        .from('schedule')
+        .select();
+      
+      if (error || !data || data.length === 0) return null;
+      
+      const schedule: Schedule = {
+        days: data.map((row: any) => ({
+          day: row.day,
+          isOpen: row.is_open,
+          slots: row.slots || [],
+        })),
+        defaultReservationDuration: data[0].default_reservation_duration || 90,
+      };
+      
+      return schedule;
+    } catch (error) {
+      console.error('Error loading schedule from InsForge:', error);
+      return null;
+    }
   },
 
   updateDay(dayIndex: number, daySchedule: DaySchedule): void {
@@ -44,7 +110,6 @@ export const scheduleService = {
   isOpenNow(): boolean {
     const now = new Date();
     const dayOfWeek = now.getDay();
-    // JS: 0=Sunday, 1=Monday... We need: 0=Monday, 1=Tuesday...
     const ourDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     const schedule = this.get();
     const today = schedule.days[ourDayIndex];
@@ -59,7 +124,6 @@ export const scheduleService = {
       let openMinutes = openH * 60 + openM;
       let closeMinutes = closeH * 60 + closeM;
 
-      // Handle midnight crossing
       if (closeMinutes <= openMinutes) {
         closeMinutes += 24 * 60;
         if (currentMinutes < openMinutes) {
