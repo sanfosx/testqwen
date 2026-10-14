@@ -38,12 +38,16 @@ npm install
 Primero, instala y configura el CLI de InsForge:
 
 ```bash
-# Login con tu API key
-npx @insforge/cli login --user-api-key uak_ex5u0GrMTqcpCfyAevAjJxtkys2wfkPVT0KkVI2cDbo
+# Login con tu API key personal (NO la subas al repositorio ni la compartas)
+npx @insforge/cli login --user-api-key TU_USER_API_KEY_AQUI
 
 # Link tu proyecto
-npx @insforge/cli link --project-id e21dae59-c5ad-4a5e-803a-af59b25bfe2b
+npx @insforge/cli link --project-id TU_PROJECT_ID_AQUI
 ```
+
+> ⚠️ **Importante:** las credenciales reales (user API key, project id, anon key) nunca deben
+> committearse. Si alguna clave quedó expuesta en el historial de este repositorio, **revócala**
+> desde el dashboard de InsForge y genera una nueva.
 
 ### 3. Crear las tablas en la base de datos
 
@@ -173,12 +177,30 @@ Edita el archivo `.env`:
 VITE_INSFORGE_BASE_URL=https://tu-proyecto.us-east.insforge.app
 VITE_INSFORGE_ANON_KEY=tu-anon-key
 VITE_GEMINI_API_KEY=tu-gemini-api-key  # Opcional
+# Solo para el modo demo (sin InsForge). Cambialas siempre:
+VITE_DEMO_ADMIN_EMAIL=admin@losgenios.com
+VITE_DEMO_ADMIN_PASSWORD=cambiar-este-password
 ```
 
 Para obtener tus credenciales de InsForge:
 ```bash
 npx @insforge/cli secrets get ANON_KEY
 ```
+
+### Autenticación del Panel de Administración
+
+El panel en `/admin` está protegido por una guarda de ruta (`ProtectedRoute`):
+sin sesión activa se redirige a `/login`.
+
+- **Con InsForge configurado (recomendado):** creá un usuario admin desde el
+  dashboard de InsForge (Authentication > Users) o con `insforge.auth.signUp`.
+  El login usa `signInWithPassword` y la sesión se restaura vía
+  `refreshSession` (cookie httpOnly). Activá **RLS** en las tablas para que
+  solo usuarios autenticados puedan leer/escribir datos.
+- **Sin InsForge (modo demo):** se aceptan las credenciales
+  `VITE_DEMO_ADMIN_EMAIL` / `VITE_DEMO_ADMIN_PASSWORD` y la sesión queda en
+  `sessionStorage`. ⚠️ Este modo es solo para desarrollo/demos locales; no lo
+  uses en producción porque las variables `VITE_*` quedan visibles en el bundle.
 
 ### 5. Iniciar la aplicación
 
@@ -257,6 +279,11 @@ VITE_GEMINI_API_KEY=tu-api-key
 ```
 
 Obtén tu API key en: https://makersuite.google.com/app/apikey
+
+> ⚠️ **Advertencia de seguridad:** `VITE_*` se incluye en el bundle público, por lo que la clave
+> de Gemini queda visible para cualquiera que inspeccione el sitio. Úsalo solo para demos locales.
+> Para producción, mové la llamada a Gemini a un backend/proxy (por ejemplo, una Function de
+> InsForge) que guarde la clave en variables de entorno del servidor, y agregá cupos por usuario.
 
 ## 📄 Licencia
 

@@ -1,11 +1,13 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Pizza, Phone, MapPin, Mail, Instagram, Facebook } from 'lucide-react';
 
 interface FooterProps {
-  onGoAdmin: () => void;
+  /** Enlace a usar para el panel: /admin si hay sesión, /login en caso contrario. */
+  adminHref?: string;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onGoAdmin }) => {
+export const Footer: React.FC<FooterProps> = ({ adminHref = '/login' }) => {
   return (
     <footer className="bg-gray-900 text-gray-300 border-t border-gray-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -53,12 +55,12 @@ export const Footer: React.FC<FooterProps> = ({ onGoAdmin }) => {
                 <Facebook className="w-5 h-5" />
               </a>
             </div>
-            <button
-              onClick={onGoAdmin}
+            <Link
+              to={adminHref}
               className="text-sm text-gray-500 hover:text-yellow-400 transition-colors underline"
             >
               Panel de Administración
-            </button>
+            </Link>
           </div>
         </div>
 
